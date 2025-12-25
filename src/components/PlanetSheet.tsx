@@ -182,16 +182,9 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
 
   if (!planet) return null;
 
-  const [numInput, setNumInput] = useState<string>(planet.number != null ? String(planet.number) : '');
-
-  useEffect(() => {
-    // Keep input in sync when opening an existing planet.
-    setNumInput(planet.number != null ? String(planet.number) : '');
-  }, [planetId, planet.number]);
-
   const bindNumber = (num?: number) => {
-    if (num == null) {
-      store.unbindPlanetNumber(planetId);
+    if (!num) {
+      store.savePlanet(planetId, { number: undefined });
       return;
     }
     // Planet numbers must be unique for the whole partida.
@@ -232,19 +225,8 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
           <span>Número de planeta</span>
           <input
             type="number"
-            value={numInput}
-            onChange={(e) => {
-              const v = e.target.value.replace(/[^0-9]/g, '');
-              setNumInput(v);
-            }}
-            onBlur={() => {
-              const trimmed = numInput.trim();
-              if (trimmed === '') {
-                bindNumber(undefined);
-              } else {
-                bindNumber(Math.floor(Number(trimmed)));
-              }
-            }}
+            value={planet.number ?? ''}
+            onChange={(e) => bindNumber(e.target.value === '' ? undefined : Math.floor(Number(e.target.value)))}
           />
         </label>
 

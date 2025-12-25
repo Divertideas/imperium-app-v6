@@ -83,41 +83,136 @@ export type GameState = {
   createPlanetForEmpire: (empire: EmpireId) => string;
   createPlanetInSlot: (empire: EmpireId, slotIndex: number) => string;
   savePlanet: (planetId: string, patch: Partial<PlanetRecord>) => void;
-  bindPlanetNumber: (planetId, number) => {
-    const s = get();
-    const planet = s.planets[planetId];
-    if (!planet) return;
-    // Enforce global uniqueness of planet numbers across the whole partida.
-    // If the number already belongs to another planet (including permanently destroyed), do nothing.
-    const existingId = s.planetByNumber[number];
-    if (existingId && existingId !== planetId) return;
-    // IMPORTANT: if the planet already had another number, remove the old mapping so we don't block digits/partials.
-    const prevNumber = planet.number;
-    const nextPlanetByNumber = { ...s.planetByNumber } as Record<number, string>;
-    if (typeof prevNumber === 'number' && prevNumber !== number) {
-      if (nextPlanetByNumber[prevNumber] === planetId) delete (nextPlanetByNumber as any)[prevNumber];
-    }
-    nextPlanetByNumber[number] = planetId;
-    set((st) => ({
-      planets: { ...st.planets, [planetId]: { ...planet, number } },
-      planetByNumber: nextPlanetByNumber
-    }));
-  },
+  bindPlanetNumber: (planetId: string, number: number) => void;
+  setPlanetDestroyed: (planetId: string, destroyed: boolean) => void;
+  conquerPlanetToEmpire: (planetId: string, empire: EmpireId) => { ok: true } | { ok: false; reason: string };
 
-  unbindPlanetNumber: (planetId) => {
-    const s = get();
-    const planet = s.planets[planetId];
-    if (!planet) return;
-    const prevNumber = planet.number;
-    const nextPlanetByNumber = { ...s.planetByNumber } as Record<number, string>;
-    if (typeof prevNumber === 'number' && nextPlanetByNumber[prevNumber] === planetId) {
-      delete nextPlanetByNumber[prevNumber];
-    }
-    set((st) => ({
-      planets: { ...st.planets, [planetId]: { ...planet, number: undefined } },
-      planetByNumber: nextPlanetByNumber
-    }));
-  },
+  // Characters
+  createCharacter: () => string;
+  saveCharacter: (charId: string, patch: Partial<CharacterRecord>) => void;
+  hireCharacter: (charId: string) => { ok: true } | { ok: false; reason: string };
+  useCharacter: (charId: string) => void;
+
+  // Helpers
+  getCurrentEmpire: () => EmpireId | undefined;
+};
+
+const DEFAULT_FLEET_SLOTS = 10;
+const DEFAULT_PLANET_SLOTS = 10;
+const DEFAULT_CHARACTER_SLOTS = 6;
+
+function emptySlots(n: number) {
+  return Array.from({ length: n }, () => null as string | null);
+}
+
+function createBlankShip(owner: EmpireId): ShipRecord {
+  return {
+    id: nanoid(),
+    owner,
+    number: undefined,
+    type: undefined,
+    name: '',
+    cost: undefined,
+    atkBase: undefined,
+    defBase: undefined,
+    prMax: undefined,
+    prMarked: 0,
+    level1: { attackNodes: 0, defenseNodes: 0, attackBonusNote: '', defenseBonusNote: '' },
+    level2: { attackNodes: 0, defenseNodes: 0, attackBonusNote: '', defenseBonusNote: '' },
+    specialUnlocked: false,
+    specialNodes: 0,
+    specialNote: '',
+    destroyed: false
+  };
+}
+
+function createBlankPlanet(owner: PlanetRecord['owner']): PlanetRecord {
+  return {
+    id: nanoid(),
+    number: undefined,
+    owner,
+    prod: undefined,
+    atk: undefined,
+    def: undefined,
+    prMax: undefined,
+    prMarked: 0,
+    abilityText: '',
+    nodePoints: [],
+    nodeActive: [],
+    destroyedPermanently: owner === 'destroyed',
+  };
+}
+
+function normalizePlanetRecord(p: PlanetRecord): PlanetRecord {
+  // Backward/forward safety: ensure arrays exist and lengths match.
+  const nodePoints = Array.isArray((p as any).nodePoints) ? (p as any).nodePoints : [];
+  const nodeActive = Array.isArray((p as any).nodeActive) ? (p as any).nodeActive : [];
+  const fixedActive = nodePoints.map((_: unknown, i: number) => Boolean(nodeActive[i]));
+  return { ...p, nodePoints, nodeActive: fixedActive };
+}
+
+function createBlankCharacter(): CharacterRecord {
+  return {
+    id: nanoid(),
+    type: undefined,
+    level: undefined,
+    number: undefined,
+    cost: undefined,
+    note: '',
+    status: 'available'
+  };
+}
+
+function sumProductionForEmpire(state: GameState, empire: EmpireId): number {
+  const slotIds = state.empirePlanetSlots[empire] ?? [];
+  let sum = 0;
+  for (const pid of slotIds) {
+    if (!pid) continue;
+    const planet = state.planets[pid];
+    if (!planet) continue;
+    if (planet.owner !== empire) continue;
+    if (planet.destroyedPermanently) continue;
+    const p = planet.prod ?? 0;
+    sum += p;
+  }
+  return sum;
+}
+
+function countActiveShips(state: GameState, empire: EmpireId): number {
+  const slotIds = state.empireFleetSlots[empire] ?? [];
+  let n = 0;
+  for (const sid of slotIds) {
+    if (!sid) continue;
+    const ship = state.ships[sid];
+    if (!ship) continue;
+    if (!ship.destroyed) n++;
+  }
+  return n;
+}
+
+function countOwnedPlanets(state: GameState, empire: EmpireId): number {
+  const slotIds = state.empirePlanetSlots[empire] ?? [];
+  let n = 0;
+  for (const pid of slotIds) {
+    if (!pid) continue;
+    const planet = state.planets[pid];
+    if (!planet) continue;
+    if (planet.owner === empire && !planet.destroyedPermanently) n++;
+  }
+  return n;
+}
+
+export const useGameStore = create<GameState>()(
+  persist(
+    (set, get) => ({
+      setup: undefined,
+      turnOrder: [],
+      currentTurnIndex: 0,
+      turnNumber: 1,
+      winnerEmpireId: undefined,
+      die1: undefined,
+      die2: undefined,
+      credits: { primus: 0, xilnah: 0, navui: 0, tora: 0, miradu: 0 },
       ships: {},
       planets: {},
       characters: {},
@@ -413,16 +508,9 @@ export type GameState = {
         // If the number already belongs to another planet (including permanently destroyed), do nothing.
         const existingId = s.planetByNumber[number];
         if (existingId && existingId !== planetId) return;
-        // IMPORTANT: if the planet already had another number, remove the old mapping so we don't block digits/partials.
-        const prevNumber = planet.number;
-        const nextPlanetByNumber = { ...s.planetByNumber } as Record<number, string>;
-        if (typeof prevNumber === 'number' && prevNumber !== number) {
-          if (nextPlanetByNumber[prevNumber] === planetId) delete (nextPlanetByNumber as any)[prevNumber];
-        }
-        nextPlanetByNumber[number] = planetId;
         set((st) => ({
           planets: { ...st.planets, [planetId]: { ...planet, number } },
-          planetByNumber: nextPlanetByNumber
+          planetByNumber: { ...st.planetByNumber, [number]: planetId }
         }));
       },
 
