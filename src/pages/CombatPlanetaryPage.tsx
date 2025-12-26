@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DiceD6 } from '../components/DiceD6';
 import { ShipSheet } from '../components/ShipSheet';
@@ -14,12 +14,37 @@ export default function CombatPlanetaryPage() {
   const navigate = useNavigate();
   const store = useGameStore();
   const current = store.getCurrentEmpire();
+  const setup = store.setup;
+  const player = setup?.playerEmpireId;
+  const isPlayerTurn = Boolean(player && current === player);
 
   const [shipA, setShipA] = useState<string | ''>('');
   const [shipB, setShipB] = useState<string | ''>('');
   const [planetNumberInput, setPlanetNumberInput] = useState<string>('');
   const [planetId, setPlanetId] = useState<string | ''>('');
   const [msg, setMsg] = useState<string>('');
+
+  // Player-only: characters that can be used in this combat.
+  const [charPick, setCharPick] = useState<string>('');
+  const [selectedCharIds, setSelectedCharIds] = useState<string[]>([]);
+  const usedCharRef = useRef<string[]>([]);
+  useEffect(() => { usedCharRef.current = selectedCharIds; }, [selectedCharIds]);
+
+  const hiredPlayerCharacters = useMemo(() => {
+    if (!player) return [] as string[];
+    return (store.empireCharacterSlots[player] ?? []).filter(Boolean) as string[];
+  }, [player, store.empireCharacterSlots]);
+
+  // When leaving the combat page (any navigation), consume the characters used in this combat.
+  useEffect(() => {
+    return () => {
+      if (!isPlayerTurn) return;
+      const ids = usedCharRef.current;
+      if (!ids || ids.length === 0) return;
+      for (const cid of ids) store.useCharacter(cid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlayerTurn]);
 
   const availableShips = useMemo(() => {
     if (!current) return [];
@@ -73,6 +98,75 @@ export default function CombatPlanetaryPage() {
         </div>
 
         <DiceD6 />
+
+        {isPlayerTurn ? (
+          <div className="subpanel">
+            <h4>Personajes (solo jugador)</h4>
+            <div className="grid two">
+              <label className="field">
+                <span>Selecciona personaje contratado</span>
+                <select value={charPick} onChange={(e) => setCharPick(e.target.value)}>
+                  <option value="">(ninguno)</option>
+                  {hiredPlayerCharacters
+                    .filter((cid) => !selectedCharIds.includes(cid))
+                    .map((cid) => {
+                      const ch = store.characters[cid];
+                      const label = ch
+                        ? `#${ch.number ?? '—'} ${ch.type ?? ''} N${ch.level ?? ''}`.trim()
+                        : cid;
+                      return (
+                        <option key={cid} value={cid}>{label}</option>
+                      );
+                    })}
+                </select>
+              </label>
+
+              <div className="field">
+                <span>&nbsp;</span>
+                <button
+                  className="primary"
+                  disabled={!charPick}
+                  onClick={() => {
+                    if (!charPick) return;
+                    if (selectedCharIds.includes(charPick)) return;
+                    setSelectedCharIds((prev) => [...prev, charPick]);
+                    setCharPick('');
+                  }}
+                >
+                  Usar en combate
+                </button>
+              </div>
+            </div>
+
+            {selectedCharIds.length > 0 ? (
+              <div className="mini-card">
+                <div className="row between">
+                  <strong>Usados en este combate (se liberan al salir)</strong>
+                  <button
+                    className="ghost"
+                    onClick={() => setSelectedCharIds([])}
+                    title="Quitar selección (no consume personajes)"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                <ul className="list">
+                  {selectedCharIds.map((cid) => {
+                    const ch = store.characters[cid];
+                    return (
+                      <li key={cid} className="row between">
+                        <span>{ch ? `#${ch.number ?? '—'} ${ch.type ?? ''} N${ch.level ?? ''}` : cid}</span>
+                        <button className="ghost" onClick={() => setSelectedCharIds((p) => p.filter((x) => x !== cid))}>Quitar</button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="muted small">Selecciona personajes y pulsa “Usar en combate”. Se eliminarán de tu ficha al salir de esta pantalla.</p>
+            )}
+          </div>
+        ) : null}
 
         <div className="subpanel">
           <h4>Selecciona naves atacantes (imperio activo)</h4>
