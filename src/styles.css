@@ -224,6 +224,10 @@ button.mini{padding:6px 10px; border-radius:10px}
 
 .nodes-image-wrap{position:relative; width:100%; max-width:520px}
 
+/* Ensure the PNG fills the wrapper so percentage-based node positions line up
+   across desktop and mobile. */
+.nodes-image-wrap img{display:block; width:100%; height:auto; touch-action:none;}
+
 .node-dot{
   position:absolute;
   transform:translate(-50%,-50%);

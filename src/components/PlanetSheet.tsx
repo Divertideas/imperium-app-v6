@@ -65,14 +65,19 @@ function PlanetNodesPanel({
     store.savePlanet(planetId, { nodeActive: next });
   };
 
-  const addPointFromClick = (ev: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+  // NOTE (mobile fix): We must calculate coordinates relative to the *image* bounds, not the wrapper.
+  // On mobile the image can be letterboxed inside the wrapper or scaled differently, which caused an offset.
+  // Pointer events also avoid touch-start scroll/zoom coordinate quirks.
+  const addPointFromPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
     if (!editMode) return;
+    // Prevent the page from scrolling while "tapping" to place nodes.
+    ev.preventDefault();
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    const clientX = 'touches' in ev ? ev.touches[0]?.clientX : (ev as React.MouseEvent).clientX;
-    const clientY = 'touches' in ev ? ev.touches[0]?.clientY : (ev as React.MouseEvent).clientY;
-    if (clientX == null || clientY == null) return;
+    const imgRect = imgRef.current?.getBoundingClientRect();
+    const rect = imgRect ?? wrap.getBoundingClientRect();
+    const clientX = ev.clientX;
+    const clientY = ev.clientY;
     const x = (clientX - rect.left) / rect.width;
     const y = (clientY - rect.top) / rect.height;
     if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
@@ -122,8 +127,7 @@ function PlanetNodesPanel({
         <div
           className="nodes-image-wrap"
           ref={wrapRef}
-          onClick={addPointFromClick as any}
-          onTouchStart={addPointFromClick as any}
+          onPointerDown={addPointFromPointer}
         >
           {imgOk ? (
             <img
