@@ -223,6 +223,8 @@ button.mini{padding:6px 10px; border-radius:10px}
 }
 
 .nodes-image-wrap{position:relative; width:100%; max-width:520px}
+/* In edit mode, prevent browser gestures from swallowing taps on Android/tablets. */
+.nodes-image-wrap.editing{touch-action:none;}
 
 /* Ensure the PNG fills the wrapper so percentage-based node positions line up
    across desktop and mobile. */

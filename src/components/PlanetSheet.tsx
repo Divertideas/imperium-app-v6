@@ -22,6 +22,10 @@ function PlanetNodesPanel({
   const [notice, setNotice] = useState<string>('');
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  // Android (mobile/tablet) can sometimes swallow a quick tap for pointer events
+  // on images while still delivering touch events. We handle BOTH and suppress
+  // duplicate placement when both fire.
+  const lastTouchRef = useRef<number>(0);
 
   const src = planetNumber ? `/planet-nodes/${planetNumber}.png` : undefined;
 
@@ -65,19 +69,14 @@ function PlanetNodesPanel({
     store.savePlanet(planetId, { nodeActive: next });
   };
 
-  // NOTE (mobile fix): We must calculate coordinates relative to the *image* bounds, not the wrapper.
-  // On mobile the image can be letterboxed inside the wrapper or scaled differently, which caused an offset.
-  // Pointer events also avoid touch-start scroll/zoom coordinate quirks.
-  const addPointFromPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
-    if (!editMode) return;
-    // Prevent the page from scrolling while "tapping" to place nodes.
-    ev.preventDefault();
+  // --- Node placement handlers (Android + desktop)
+  // Root cause: on Android a quick tap may not dispatch pointerdown reliably over images,
+  // but touchstart is reliable. We support BOTH and dedupe.
+  const placePointAtClient = (clientX: number, clientY: number) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
     const imgRect = imgRef.current?.getBoundingClientRect();
     const rect = imgRect ?? wrap.getBoundingClientRect();
-    const clientX = ev.clientX;
-    const clientY = ev.clientY;
     const x = (clientX - rect.left) / rect.width;
     const y = (clientY - rect.top) / rect.height;
     if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
@@ -93,6 +92,24 @@ function PlanetNodesPanel({
     const nextPoints = [...points, { x, y }];
     const nextActive = [...active, false];
     store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
+  };
+
+  const addPointFromPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
+    if (!editMode) return;
+    // If a touch event just fired, ignore the synthetic pointer event to avoid duplicates.
+    if (Date.now() - lastTouchRef.current < 600) return;
+    ev.preventDefault();
+    placePointAtClient(ev.clientX, ev.clientY);
+  };
+
+  const addPointFromTouch = (ev: React.TouchEvent<HTMLDivElement>) => {
+    if (!editMode) return;
+    lastTouchRef.current = Date.now();
+    // Prevent scrolling/zooming while placing nodes. (Some browsers treat touch listeners as passive; that's okay.)
+    try { ev.preventDefault(); } catch { /* noop */ }
+    const t = ev.touches[0] ?? ev.changedTouches[0];
+    if (!t) return;
+    placePointAtClient(t.clientX, t.clientY);
   };
 
   const removePoint = (idx: number) => {
@@ -125,9 +142,10 @@ function PlanetNodesPanel({
         <div className="muted small">Introduce el número del planeta para mostrar la ramificación.</div>
       ) : (
         <div
-          className="nodes-image-wrap"
+          className={`nodes-image-wrap ${editMode ? 'editing' : ''}`}
           ref={wrapRef}
           onPointerDown={addPointFromPointer}
+          onTouchStart={addPointFromTouch}
         >
           {imgOk ? (
             <img
