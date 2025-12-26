@@ -1,49 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 
+type RollMode = 'die1' | 'die2' | 'both';
+
+function DieFace({ value, rolling }: { value: number; rolling: boolean }) {
+  return (
+    <div className={'dice' + (rolling ? ' dice--rolling' : '')} aria-label={`Dado: ${value}`}>
+      <div className="dice__face">{value}</div>
+    </div>
+  );
+}
+
 export function DiceD6() {
-  const die1 = useGameStore(s => s.die1);
-  const die2 = useGameStore(s => s.die2);
-  const roll = useGameStore(s => s.rollDice);
-  const [rolling, setRolling] = useState(false);
-  const [anim1, setAnim1] = useState<number | undefined>(undefined);
-  const [anim2, setAnim2] = useState<number | undefined>(undefined);
+  const die1 = useGameStore((s) => s.die1);
+  const die2 = useGameStore((s) => s.die2);
+  const rollDie1 = useGameStore((s) => s.rollDie1);
+  const rollDie2 = useGameStore((s) => s.rollDie2);
+  const rollBoth = useGameStore((s) => s.rollBoth);
+
+  const [rollingMode, setRollingMode] = useState<RollMode | null>(null);
 
   useEffect(() => {
-    if (!rolling) return;
-    const t0 = Date.now();
-    const int = setInterval(() => {
-      setAnim1(Math.floor(Math.random() * 6) + 1);
-      setAnim2(Math.floor(Math.random() * 6) + 1);
-      if (Date.now() - t0 > 650) {
-        clearInterval(int);
-        setRolling(false);
-        setAnim1(undefined);
-        setAnim2(undefined);
-      }
-    }, 60);
-    return () => clearInterval(int);
-  }, [rolling]);
+    if (!rollingMode) return;
+    const t = setTimeout(() => setRollingMode(null), 450);
+    return () => clearTimeout(t);
+  }, [rollingMode]);
+
+  const doRoll = (mode: RollMode) => {
+    setRollingMode(mode);
+    if (mode === 'die1') rollDie1();
+    else if (mode === 'die2') rollDie2();
+    else rollBoth();
+  };
 
   return (
-    <div className={rolling ? 'dice rolling' : 'dice'}>
-      <button
-        className="primary"
-        onClick={() => {
-          setRolling(true);
-          roll();
-        }}
-        disabled={rolling}
-      >
-        {rolling ? 'Tirando…' : 'Tirar dados (2D6)'}
-      </button>
-      <div className="dice-result">
-        <div className="row wrap" style={{ gap: 12, alignItems: 'center' }}>
-          <span className="muted">Dado 1:</span>
-          <strong className="dice-num">{rolling ? (anim1 ?? die1 ?? '—') : (die1 ?? '—')}</strong>
-          <span className="muted">Dado 2:</span>
-          <strong className="dice-num">{rolling ? (anim2 ?? die2 ?? '—') : (die2 ?? '—')}</strong>
-        </div>
+    <div className="diceWrap">
+      <div className="diceRow">
+        <DieFace value={die1} rolling={rollingMode === 'die1' || rollingMode === 'both'} />
+        <DieFace value={die2} rolling={rollingMode === 'die2' || rollingMode === 'both'} />
+      </div>
+      <div className="diceButtons">
+        <button className="btn" type="button" onClick={() => doRoll('die1')}>Tirar dado 1</button>
+        <button className="btn" type="button" onClick={() => doRoll('die2')}>Tirar dado 2</button>
+        <button className="btn" type="button" onClick={() => doRoll('both')}>Tirar 2 dados</button>
       </div>
     </div>
   );

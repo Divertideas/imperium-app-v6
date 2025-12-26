@@ -64,6 +64,9 @@ export type GameState = {
   newGame: (setup: GameSetup) => void;
   resetGame: () => void;
 
+  rollDie1: () => number;
+  rollDie2: () => number;
+  rollBoth: () => { die1: number; die2: number };
   rollDice: () => { die1: number; die2: number };
   setCredits: (empire: EmpireId, value: number) => void;
   incCredits: (empire: EmpireId, delta: number) => void;
@@ -83,7 +86,7 @@ export type GameState = {
   createPlanetForEmpire: (empire: EmpireId) => string;
   createPlanetInSlot: (empire: EmpireId, slotIndex: number) => string;
   savePlanet: (planetId: string, patch: Partial<PlanetRecord>) => void;
-  bindPlanetNumber: (planetId: string, number: number) => void;
+  bindPlanetNumber: (planetId: string, number?: number) => void;
   setPlanetDestroyed: (planetId: string, destroyed: boolean) => void;
   conquerPlanetToEmpire: (planetId: string, empire: EmpireId) => { ok: true } | { ok: false; reason: string };
 
@@ -277,12 +280,26 @@ export const useGameStore = create<GameState>()(
         die2: undefined
       }),
 
-      rollDice: () => {
+      rollDie1: () => {
+        const die1 = Math.floor(Math.random() * 6) + 1;
+        set({ die1 });
+        return die1;
+      },
+
+      rollDie2: () => {
+        const die2 = Math.floor(Math.random() * 6) + 1;
+        set({ die2 });
+        return die2;
+      },
+
+      rollBoth: () => {
         const die1 = Math.floor(Math.random() * 6) + 1;
         const die2 = Math.floor(Math.random() * 6) + 1;
         set({ die1, die2 });
         return { die1, die2 };
       },
+
+      rollDice: () => get().rollBoth(),
 
       setCredits: (empire, value) =>
         set((s) => ({ credits: { ...s.credits, [empire]: Math.max(0, Math.floor(value)) } })),
@@ -504,13 +521,39 @@ export const useGameStore = create<GameState>()(
         const s = get();
         const planet = s.planets[planetId];
         if (!planet) return;
+
+        const prevNumber = planet.number;
+
+        // Allow clearing the number (frees it globally)
+        if (number === undefined || number === null || Number.isNaN(Number(number))) {
+          if (prevNumber !== undefined) {
+            const nextMap = { ...s.planetByNumber };
+            delete nextMap[prevNumber];
+            set((st) => ({
+              planets: { ...st.planets, [planetId]: { ...planet, number: undefined } },
+              planetByNumber: nextMap
+            }));
+          }
+          return;
+        }
+
+        const nextNumber = Number(number);
+
         // Enforce global uniqueness of planet numbers across the whole partida.
         // If the number already belongs to another planet (including permanently destroyed), do nothing.
-        const existingId = s.planetByNumber[number];
+        const existingId = s.planetByNumber[nextNumber];
         if (existingId && existingId !== planetId) return;
+
+        // When editing, we must free the previous number; otherwise prefixes like "2" get stuck.
+        const nextMap = { ...s.planetByNumber };
+        if (prevNumber !== undefined && prevNumber !== nextNumber) {
+          delete nextMap[prevNumber];
+        }
+        nextMap[nextNumber] = planetId;
+
         set((st) => ({
-          planets: { ...st.planets, [planetId]: { ...planet, number } },
-          planetByNumber: { ...st.planetByNumber, [number]: planetId }
+          planets: { ...st.planets, [planetId]: { ...planet, number: nextNumber } },
+          planetByNumber: nextMap
         }));
       },
 

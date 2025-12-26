@@ -17,7 +17,7 @@ export default function CombatPlanetaryPage() {
 
   const [shipA, setShipA] = useState<string | ''>('');
   const [shipB, setShipB] = useState<string | ''>('');
-  const [planetNumber, setPlanetNumber] = useState<number | ''>('');
+  const [planetNumberInput, setPlanetNumberInput] = useState<string>('');
   const [planetId, setPlanetId] = useState<string | ''>('');
   const [msg, setMsg] = useState<string>('');
 
@@ -123,12 +123,25 @@ export default function CombatPlanetaryPage() {
           <label className="field">
             <span>Número de planeta</span>
             <input
-              type="number"
-              value={planetNumber}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="1-66"
+              value={planetNumberInput}
               onChange={(e) => {
-                const v = e.target.value === '' ? '' : Math.floor(Number(e.target.value));
-                setPlanetNumber(v);
-                if (v !== '') resolvePlanet(v);
+                const raw = e.target.value.replace(/\D/g, '');
+                const clipped = raw.slice(0, 2);
+                setPlanetNumberInput(clipped);
+              }}
+              onBlur={() => {
+                if (!planetNumberInput) return;
+                const num = Math.max(1, Math.min(66, parseInt(planetNumberInput, 10)));
+                resolvePlanet(num);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
             />
           </label>
