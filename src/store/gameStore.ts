@@ -423,8 +423,24 @@ export const useGameStore = create<GameState>()(
           if (slots?.includes(shipId)) return { ok: false, reason: 'Esta nave ya está asignada a una flota.' } as const;
         }
 
-        // Ensure ship number is globally unique (owned or destroyed).
-        const conflict = Object.values(s.ships).find((other) => other.id !== shipId && other.number === ship.number);
+        // Ensure ship number is globally unique ONLY among ships that are already in play
+        // (i.e. assigned to a fleet slot or in a destroyed list). Draft/empty sheets must not block numbers.
+        const lockedShipIds = new Set<string>();
+        for (const slots of Object.values(s.empireFleetSlots)) {
+          for (const id of slots ?? []) {
+            if (id) lockedShipIds.add(id);
+          }
+        }
+        for (const ids of Object.values(s.empireDestroyedShipIds)) {
+          for (const id of ids ?? []) lockedShipIds.add(id);
+        }
+
+        const conflict = Object.values(s.ships).find(
+          (other) =>
+            other.id !== shipId &&
+            other.number === ship.number &&
+            (lockedShipIds.has(other.id) || other.destroyed)
+        );
         if (conflict) return { ok: false, reason: 'Ese número de nave ya existe en la partida (asignada o destruida).' } as const;
         const cost = ship.cost ?? 0;
         if ((s.credits[ship.owner] ?? 0) < cost) return { ok: false, reason: 'No hay créditos suficientes.' } as const;
@@ -619,6 +635,43 @@ export const useGameStore = create<GameState>()(
         if (!planet) return { ok: false, reason: 'Planeta no encontrado.' } as const;
         if (planet.destroyedPermanently || planet.owner === 'destroyed') return { ok: false, reason: 'Este planeta está destruido y no puede conquistarse.' } as const;
 
+        // Safety: avoid duplicating the same planet in the same empire slots.
+        // This can happen if the user clicks "Planeta conquistado" twice or if the planet is already owned by the empire.
+        const alreadyInSlots = (s.empirePlanetSlots[empire] ?? []).some((x) => x === planetId);
+        if (alreadyInSlots) {
+          // Ensure owner is correct, but don't add a second reference.
+          if (planet.owner !== empire) {
+            set((st) => ({ planets: { ...st.planets, [planetId]: { ...planet, owner: empire } } }));
+          }
+          return { ok: true } as const;
+        }
+
+        // Prevent having two different planet records with the same planet number inside one empire.
+        // (Planet numbers are unique in the game.)
+        const n = planet.number;
+        if (typeof n === 'number') {
+          const dupInEmpire = (s.empirePlanetSlots[empire] ?? []).some((pid) => {
+            if (!pid) return false;
+            const p = s.planets[pid];
+            return !!p && p.number === n && pid !== planetId;
+          });
+          if (dupInEmpire) {
+            return { ok: false, reason: `Ese planeta (${n}) ya está registrado en este imperio.` } as const;
+          }
+        }
+
+        // Safety: prevent having two different planet records with the same visible number in one empire.
+        if (planet.number != null) {
+          const hasSameNumber = (s.empirePlanetSlots[empire] ?? []).some((pid) => {
+            if (!pid) return false;
+            const p = s.planets[pid];
+            return p?.number === planet.number;
+          });
+          if (hasSameNumber) {
+            return { ok: false, reason: `Este imperio ya tiene el planeta ${planet.number}.` } as const;
+          }
+        }
+
         const slots = [...(s.empirePlanetSlots[empire] ?? [])];
         // Normally slot 0 is the natal world, but if an empire loses it, slot 0 becomes available again.
         // So we fill the first available slot, prioritizing slot 0 if it is empty.
@@ -627,7 +680,7 @@ export const useGameStore = create<GameState>()(
 
         // Remove planet from previous owner's slots if needed
         const prevOwner = planet.owner;
-        if (prevOwner !== 'free') {
+        if (prevOwner !== 'free' && prevOwner !== empire) {
           const prevSlots = [...(s.empirePlanetSlots[prevOwner] ?? [])].map((x) => (x === planetId ? null : x));
           set((st) => ({ empirePlanetSlots: { ...st.empirePlanetSlots, [prevOwner]: prevSlots } }));
         }
