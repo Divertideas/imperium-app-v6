@@ -102,15 +102,25 @@ function PlanetNodesPanel({
     placePointAtClient(ev.clientX, ev.clientY);
   };
 
-  const addPointFromTouch = (ev: React.TouchEvent<HTMLDivElement>) => {
+  // Android fix: React's touch handlers may be passive, causing taps to be ignored.
+  // We attach a non-passive native touchstart listener to reliably capture short taps.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
     if (!editMode) return;
-    lastTouchRef.current = Date.now();
-    // Prevent scrolling/zooming while placing nodes. (Some browsers treat touch listeners as passive; that's okay.)
-    try { ev.preventDefault(); } catch { /* noop */ }
-    const t = ev.touches[0] ?? ev.changedTouches[0];
-    if (!t) return;
-    placePointAtClient(t.clientX, t.clientY);
-  };
+
+    const handler = (e: TouchEvent) => {
+      lastTouchRef.current = Date.now();
+      // Non-passive listener => preventDefault actually works, so the browser won't swallow the tap.
+      e.preventDefault();
+      const t = e.touches[0] ?? e.changedTouches[0];
+      if (!t) return;
+      placePointAtClient(t.clientX, t.clientY);
+    };
+
+    el.addEventListener('touchstart', handler, { passive: false });
+    return () => el.removeEventListener('touchstart', handler as any);
+  }, [editMode, placePointAtClient]);
 
   const removePoint = (idx: number) => {
     const nextPoints = points.filter((_, i) => i !== idx);
@@ -145,7 +155,6 @@ function PlanetNodesPanel({
           className={`nodes-image-wrap ${editMode ? 'editing' : ''}`}
           ref={wrapRef}
           onPointerDown={addPointFromPointer}
-          onTouchStart={addPointFromTouch}
         >
           {imgOk ? (
             <img
