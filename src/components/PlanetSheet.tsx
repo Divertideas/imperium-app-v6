@@ -179,7 +179,7 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
   const store = useGameStore();
   const planet = store.planets[planetId];
   const [msg, setMsg] = useState<string>('');
-  // We keep a draft string so typing "2" doesn't reserve/validate numbers until the user confirms (blur/Enter).
+  // We keep a draft string so typing "2" never reserves/validates numbers until the user explicitly confirms.
   const [draftNumber, setDraftNumber] = useState<string>('');
 
   if (!planet) return null;
@@ -227,23 +227,38 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
       ) : null}
 
       <div className="grid two">
-        <label className="field">
+        <div className="field">
           <span>Número de planeta</span>
-          <input
-            type="number"
-            value={draftNumber}
-            onChange={(e) => setDraftNumber(e.target.value)}
-            onBlur={() => {
-              const v = draftNumber.trim();
-              bindNumber(v === '' ? undefined : Math.floor(Number(v)));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-        </label>
+          <div className="row gap">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={draftNumber}
+              onChange={(e) => setDraftNumber(e.target.value)}
+              placeholder="1–66"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const cleaned = draftNumber.replace(/[^0-9]/g, '').trim();
+                  const num = cleaned === '' ? undefined : Number(cleaned);
+                  bindNumber(Number.isFinite(num as number) ? (num as number) : undefined);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                const cleaned = draftNumber.replace(/[^0-9]/g, '').trim();
+                const num = cleaned === '' ? undefined : Number(cleaned);
+                bindNumber(Number.isFinite(num as number) ? (num as number) : undefined);
+              }}
+            >
+              Guardar
+            </button>
+          </div>
+          <small className="muted">Pulsa “Guardar” (o Enter) para confirmar el número. Así no se bloquean números parciales mientras escribes.</small>
+        </div>
 
         <label className="field">
           <span>Propietario</span>

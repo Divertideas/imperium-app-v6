@@ -714,10 +714,16 @@ export const useGameStore = create<GameState>()(
         const num = ch.number;
         if (!num) return { ok: false, reason: 'Introduce el número del personaje.' } as const;
 
-        // Ensure uniqueness: no other available/used character in store has same number
-        for (const other of Object.values(s.characters)) {
-          if (other.id !== charId && other.number === num && other.status === 'available') {
-            return { ok: false, reason: 'Ese número de personaje ya está contratado.' } as const;
+        // Ensure uniqueness: a character number can only be hired by ONE empire at a time.
+        // We check the *slots* (hired characters) rather than the whole store.
+        for (const [empireId, slotArr] of Object.entries(s.empireCharacterSlots)) {
+          for (const cid of slotArr ?? []) {
+            if (!cid) continue;
+            if (cid === charId) continue;
+            const other = s.characters[cid];
+            if (other?.number === num) {
+              return { ok: false, reason: 'Ese número de personaje ya está contratado.' } as const;
+            }
           }
         }
 
