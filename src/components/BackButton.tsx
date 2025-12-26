@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
  * Back button that returns to the previous screen when possible.
  * Falls back to /turn if the history stack is empty.
  */
-export function BackButton(props: { fallback?: string; label?: string }) {
+export function BackButton(props: { fallback?: string; label?: string; beforeBack?: () => void }) {
   const navigate = useNavigate();
   const fallback = props.fallback ?? '/turn';
   const label = props.label ?? 'Volver';
@@ -15,6 +15,7 @@ export function BackButton(props: { fallback?: string; label?: string }) {
       className="ghost"
       type="button"
       onClick={() => {
+        props.beforeBack?.();
         if (window.history.length > 1) navigate(-1);
         else navigate(fallback);
       }}

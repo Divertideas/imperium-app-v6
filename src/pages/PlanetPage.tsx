@@ -18,12 +18,21 @@ export default function PlanetPage() {
     );
   }
 
+  const beforeBack = () => {
+    // If the user opened an empty planet slot but never assigned a number, discard the placeholder.
+    // Never discard a natal-planet slot (slot index 0 for any empire).
+    const isNatalSlot = Object.values(store.empirePlanetSlots).some((slots) => slots?.[0] === planetId);
+    if (!isNatalSlot && (planet.number === undefined || planet.number === null)) {
+      store.discardPlanetIfUnnumbered(planetId);
+    }
+  };
+
   return (
     <div className="page">
       <div className="card">
         <div className="row between">
           <h2>Ficha de planeta</h2>
-          <BackButton />
+          <BackButton beforeBack={beforeBack} />
         </div>
         <PlanetSheet planetId={planetId} mode="full" />
       </div>

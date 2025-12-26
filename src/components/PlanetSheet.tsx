@@ -179,8 +179,14 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
   const store = useGameStore();
   const planet = store.planets[planetId];
   const [msg, setMsg] = useState<string>('');
+  // We keep a draft string so typing "2" doesn't reserve/validate numbers until the user confirms (blur/Enter).
+  const [draftNumber, setDraftNumber] = useState<string>('');
 
   if (!planet) return null;
+
+  useEffect(() => {
+    setDraftNumber(planet.number === undefined || planet.number === null ? '' : String(planet.number));
+  }, [planet.number]);
 
   const bindNumber = (num?: number) => {
     if (!num) {
@@ -225,8 +231,17 @@ export function PlanetSheet(props: { planetId: string; mode?: 'full' | 'inline' 
           <span>Número de planeta</span>
           <input
             type="number"
-            value={planet.number ?? ''}
-            onChange={(e) => bindNumber(e.target.value === '' ? undefined : Math.floor(Number(e.target.value)))}
+            value={draftNumber}
+            onChange={(e) => setDraftNumber(e.target.value)}
+            onBlur={() => {
+              const v = draftNumber.trim();
+              bindNumber(v === '' ? undefined : Math.floor(Number(v)));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
           />
         </label>
 

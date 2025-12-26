@@ -87,6 +87,8 @@ export type GameState = {
   createPlanetInSlot: (empire: EmpireId, slotIndex: number) => string;
   savePlanet: (planetId: string, patch: Partial<PlanetRecord>) => void;
   bindPlanetNumber: (planetId: string, number?: number) => void;
+  /** If the user entered a planet sheet but never assigned a number, discard it and free the slot. */
+  discardPlanetIfUnnumbered: (planetId: string) => void;
   setPlanetDestroyed: (planetId: string, destroyed: boolean) => void;
   conquerPlanetToEmpire: (planetId: string, empire: EmpireId) => { ok: true } | { ok: false; reason: string };
 
@@ -200,6 +202,8 @@ function countOwnedPlanets(state: GameState, empire: EmpireId): number {
     if (!pid) continue;
     const planet = state.planets[pid];
     if (!planet) continue;
+    // A planet only counts if it has a confirmed number.
+    if (planet.number === undefined || planet.number === null) continue;
     if (planet.owner === empire && !planet.destroyedPermanently) n++;
   }
   return n;
@@ -554,6 +558,34 @@ export const useGameStore = create<GameState>()(
         set((st) => ({
           planets: { ...st.planets, [planetId]: { ...planet, number: nextNumber } },
           planetByNumber: nextMap
+        }));
+      },
+
+      discardPlanetIfUnnumbered: (planetId) => {
+        const s = get();
+        const planet = s.planets[planetId];
+        if (!planet) return;
+        // Only discard "placeholders" that never got a confirmed number.
+        if (planet.number !== undefined && planet.number !== null) return;
+
+        // Remove from any empire slot that references it.
+        const nextEmpirePlanetSlots = { ...s.empirePlanetSlots };
+        for (const emp of EMPIRES) {
+          const prevSlots = [...(nextEmpirePlanetSlots[emp.id] ?? [])];
+          nextEmpirePlanetSlots[emp.id] = prevSlots.map((x) => (x === planetId ? null : x));
+        }
+
+        // Ensure global catalog doesn't hold anything (defensive)
+        const nextMap = { ...s.planetByNumber };
+        if (planet.number !== undefined) delete nextMap[planet.number];
+
+        const nextPlanets = { ...s.planets };
+        delete nextPlanets[planetId];
+
+        set(() => ({
+          empirePlanetSlots: nextEmpirePlanetSlots,
+          planetByNumber: nextMap,
+          planets: nextPlanets
         }));
       },
 
