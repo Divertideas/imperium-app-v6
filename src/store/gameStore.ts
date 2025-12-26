@@ -620,7 +620,9 @@ export const useGameStore = create<GameState>()(
         if (planet.destroyedPermanently || planet.owner === 'destroyed') return { ok: false, reason: 'Este planeta está destruido y no puede conquistarse.' } as const;
 
         const slots = [...(s.empirePlanetSlots[empire] ?? [])];
-        const idx = slots.findIndex((x, i) => i !== 0 && x === null);
+        // Normally slot 0 is the natal world, but if an empire loses it, slot 0 becomes available again.
+        // So we fill the first available slot, prioritizing slot 0 if it is empty.
+        const idx = slots[0] === null ? 0 : slots.findIndex((x, i) => i !== 0 && x === null);
         if (idx === -1) return { ok: false, reason: 'No puedes conquistar más planetas (sin huecos libres).' } as const;
 
         // Remove planet from previous owner's slots if needed

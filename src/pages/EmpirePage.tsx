@@ -59,7 +59,7 @@ export default function EmpirePage() {
               {planetSlots.map((pid, idx) => (
                 <button
                   key={idx}
-                  className={idx === 0 && pid ? 'slot locked' : pid ? 'slot filled' : 'slot'}
+                  className={pid ? 'slot filled' : 'slot'}
                   onClick={() => pid ? navigate(`/planet/${pid}`) : openOrCreatePlanet(idx)}
                   type="button"
                 >

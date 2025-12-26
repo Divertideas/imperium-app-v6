@@ -185,6 +185,20 @@ button.mini{padding:6px 10px; border-radius:10px}
 .dice.rolling .dice-num{animation:dicePop .18s infinite alternate}
 @keyframes dicePop{from{transform:scale(1)}to{transform:scale(1.15)}}
 
+/* New dice layout: stacked rows (mobile friendly) */
+.dicePanel{flex-direction:column; align-items:stretch}
+.diceRow{display:flex; align-items:center; gap:10px}
+.diceRow--both{justify-content:flex-end}
+.diceFace{
+  width:46px; height:46px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(9,13,19,.45);
+  font-size:20px; font-weight:800;
+}
+.diceResult{min-width:22px; font-size:22px; font-weight:800}
+
 .chips{display:flex; gap:8px; flex-wrap:wrap}
 .chip{
   border-radius:999px;
