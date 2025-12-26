@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { TopBar } from './components/TopBar';
+import { ToastOverlay } from './components/ToastOverlay';
 import HomePage from './pages/HomePage';
 import EmpirePage from './pages/EmpirePage';
 import ShipPage from './pages/ShipPage';
@@ -20,6 +21,7 @@ export default function App() {
   return (
     <div className="app">
       {setup ? <TopBar /> : null}
+      <ToastOverlay />
       <div className="content">
         <Routes>
           {winner ? <Route path="/victory" element={<VictoryPage />} /> : null}

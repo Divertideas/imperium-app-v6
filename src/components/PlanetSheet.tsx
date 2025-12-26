@@ -57,6 +57,7 @@ function PlanetNodesPanel({
       const credits = store.credits[payEmpire] ?? 0;
       if (credits < 1) {
         setNotice('No hay créditos suficientes para activar este nodo.');
+        store.showToast('No tienes créditos suficientes');
         return;
       }
       store.incCredits(payEmpire, -1);
@@ -96,6 +97,8 @@ function PlanetNodesPanel({
 
   const addPointFromPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
     if (!editMode) return;
+    const target = ev.target as HTMLElement | null;
+    if (target && target.closest && target.closest('.node-dot')) return;
     // If a touch event just fired, ignore the synthetic pointer event to avoid duplicates.
     if (Date.now() - lastTouchRef.current < 600) return;
     ev.preventDefault();

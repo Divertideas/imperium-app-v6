@@ -39,6 +39,10 @@ export type GameState = {
   gameOverMessage?: string;
   eliminatedEmpireId?: EmpireId;
 
+  // Simple global toast popup (non-blocking). Used to explain "no credits" and similar.
+  toastMessage?: string;
+  toastNonce: number;
+
   // Global dice (persisted)
   die1?: number;
   die2?: number;
@@ -74,6 +78,8 @@ export type GameState = {
   startTurnForCurrentEmpire: () => void;
   endTurn: () => void;
   clearNotice: () => void;
+
+  showToast: (message: string) => void;
 
   // Ships
   createShipForEmpire: (empire: EmpireId) => string;
@@ -217,6 +223,8 @@ export const useGameStore = create<GameState>()(
       currentTurnIndex: 0,
       turnNumber: 1,
       winnerEmpireId: undefined,
+      toastMessage: undefined,
+      toastNonce: 0,
       die1: undefined,
       die2: undefined,
       credits: { primus: 0, xilnah: 0, navui: 0, tora: 0, miradu: 0 },
@@ -253,6 +261,8 @@ export const useGameStore = create<GameState>()(
           currentTurnIndex: 0,
           turnNumber: 1,
           winnerEmpireId: undefined,
+          toastMessage: undefined,
+          toastNonce: 0,
           die1: undefined,
           die2: undefined,
           gameOverMessage: undefined,
@@ -278,6 +288,8 @@ export const useGameStore = create<GameState>()(
         currentTurnIndex: 0,
         turnNumber: 1,
         winnerEmpireId: undefined,
+        toastMessage: undefined,
+        toastNonce: 0,
         gameOverMessage: undefined,
         eliminatedEmpireId: undefined,
         die1: undefined,
@@ -401,6 +413,9 @@ export const useGameStore = create<GameState>()(
       },
 
       clearNotice: () => set({ gameOverMessage: undefined, eliminatedEmpireId: undefined }),
+
+      showToast: (message) =>
+        set((s) => ({ toastMessage: message ? message : undefined, toastNonce: (s.toastNonce ?? 0) + 1 })),
 
       createShipForEmpire: (empire) => {
         const ship = createBlankShip(empire);

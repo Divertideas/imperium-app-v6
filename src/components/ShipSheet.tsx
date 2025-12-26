@@ -115,6 +115,7 @@ export function ShipSheet(props: {
     const c = store.credits[emp] ?? 0;
     if (c < 1) {
       setMsg('No hay créditos suficientes para activar un nodo.');
+      store.showToast('No tienes créditos suficientes');
       return false;
     }
     store.incCredits(emp, -1);

@@ -228,7 +228,8 @@ button.mini{padding:6px 10px; border-radius:10px}
 
 /* Ensure the PNG fills the wrapper so percentage-based node positions line up
    across desktop and mobile. */
-.nodes-image-wrap img{display:block; width:100%; height:auto; touch-action:none;}
+.nodes-image-wrap img{display:block; width:100%; height:auto; touch-action:pan-y;}
+.nodes-image-wrap.editing img{touch-action:none;}
 
 .node-dot{
   position:absolute;
@@ -246,3 +247,10 @@ button.mini{padding:6px 10px; border-radius:10px}
   border-color:rgba(106,167,255,0.95);
   box-shadow:0 0 0 3px rgba(106,167,255,0.20);
 }
+
+/* Toast popup (credits, warnings...) */
+.toast{position:fixed; left:0; right:0; bottom:14px; display:flex; justify-content:center; pointer-events:none; z-index:60; opacity:0; transform:translateY(8px); transition:opacity .18s ease, transform .18s ease;}
+.toast.show{opacity:1; transform:translateY(0);}
+.toast-inner{pointer-events:auto; max-width:92vw; background:rgba(18,22,28,0.92); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px 12px; display:flex; gap:12px; align-items:center;}
+.toast-text{font-size:14px; color:var(--text);}
+.toast-close{border:1px solid rgba(255,255,255,0.16); background:transparent; color:var(--text); width:28px; height:28px; border-radius:10px; line-height:26px; padding:0; cursor:pointer;}
