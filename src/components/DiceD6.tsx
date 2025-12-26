@@ -36,8 +36,8 @@ export function DiceD6() {
   return (
     <div className="diceWrap">
       <div className="diceRow">
-        <DieFace value={die1} rolling={rollingMode === 'die1' || rollingMode === 'both'} />
-        <DieFace value={die2} rolling={rollingMode === 'die2' || rollingMode === 'both'} />
+        <DieFace value={die1 ?? 1} rolling={rollingMode === 'die1' || rollingMode === 'both'} />
+        <DieFace value={die2 ?? 1} rolling={rollingMode === 'die2' || rollingMode === 'both'} />
       </div>
       <div className="diceButtons">
         <button className="btn" type="button" onClick={() => doRoll('die1')}>Tirar dado 1</button>
