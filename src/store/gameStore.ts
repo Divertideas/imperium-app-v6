@@ -10,11 +10,11 @@ export type EmpireConfig = {
 };
 
 export const EMPIRES: EmpireConfig[] = [
-  { id: 'primus', name: 'PrimUS', natalPlanetNumber: 11 },
-  { id: 'xilnah', name: 'Xil-Nah', natalPlanetNumber: 12 },
-  { id: 'navui', name: 'Navui', natalPlanetNumber: 13 },
-  { id: 'tora', name: 'Tora', natalPlanetNumber: 14 },
-  { id: 'miradu', name: 'Miradu', natalPlanetNumber: 15 }
+  { id: 'primus', name: 'Humanos', natalPlanetNumber: 11 },
+  { id: 'xilnah', name: 'Robotiránidos', natalPlanetNumber: 12 },
+  { id: 'navui', name: 'Nómadas', natalPlanetNumber: 13 },
+  { id: 'tora', name: 'Legión de Hierro', natalPlanetNumber: 14 },
+  { id: 'miradu', name: 'Mercaderes', natalPlanetNumber: 15 }
 ];
 
 // Helper used by UI to display a friendly empire name.
