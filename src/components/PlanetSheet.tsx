@@ -181,7 +181,9 @@ function PlanetNodesPanel({
       const dy = t.clientY - start.y;
       const moved = Math.sqrt(dx * dx + dy * dy);
       // If finger moved, treat as scroll/gesture, not a tap.
-      if (moved > 10) return;
+      // On Android, small jitter is common; too low a threshold makes
+      // single taps get ignored and users end up needing "double taps".
+      if (moved > 25) return;
 
       const rect = getRect();
       if (!rect) return;
@@ -259,6 +261,9 @@ function PlanetNodesPanel({
           className={`nodes-image-wrap ${editMode ? 'editing' : ''}`}
           ref={wrapRef}
           onPointerDown={addPointFromPointer}
+          // Critical for Android: prevents double-tap-to-zoom and ensures a single tap
+          // is delivered immediately to our handlers.
+          style={{ touchAction: editMode ? 'none' : 'pan-y' }}
         >
           {imgOk ? (
             <img
