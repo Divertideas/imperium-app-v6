@@ -114,6 +114,28 @@ function PlanetNodesPanel({
   const activeRef = React.useRef(active);
   const editRef = React.useRef(editMode);
 
+  // Toggle edit mode and update the ref synchronously.
+  // This fixes an Android quirk where the very first tap after enabling edit mode
+  // can read a stale "false" value (making it feel like a double-tap is required).
+  const toggleEditMode = () => {
+    setEditMode((v) => {
+      const nv = !v;
+      editRef.current = nv;
+      // On Android, if an <input> was focused (keyboard open), the first tap on the image
+      // is often consumed just to dismiss the keyboard. Blurring immediately when entering
+      // edit mode ensures the very next tap places a node (single-tap behavior).
+      if (nv) {
+        try {
+          const ae = document.activeElement as HTMLElement | null;
+          ae?.blur?.();
+        } catch {
+          // ignore
+        }
+      }
+      return nv;
+    });
+  };
+
   // Keep refs in sync *synchronously* on every render so the very first tap
   // after enabling edit mode is not missed on Android.
   pointsRef.current = points;
@@ -170,8 +192,9 @@ function PlanetNodesPanel({
       placePointAtClient(t.clientX, t.clientY);
     };
 
-    el.addEventListener('touchstart', handler, { passive: false });
-    return () => el.removeEventListener('touchstart', handler as any);
+    // Use capture so we receive the tap before the browser starts interpreting it as a scroll gesture.
+    el.addEventListener('touchstart', handler, { passive: false, capture: true });
+    return () => el.removeEventListener('touchstart', handler as any, true);
     // Intentionally attach once; handler reads latest state through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, planetId]);
@@ -191,7 +214,7 @@ function PlanetNodesPanel({
       <div className="row between">
         <div className="nodes-title">Ramificación de nodos</div>
         <div className="row wrap">
-          <button className="ghost" type="button" onClick={() => setEditMode((v) => !v)} disabled={!planetNumber}>
+          <button className="ghost" type="button" onClick={toggleEditMode} disabled={!planetNumber}>
             {editMode ? 'Terminar edición' : 'Editar nodos'}
           </button>
           {editMode ? (
