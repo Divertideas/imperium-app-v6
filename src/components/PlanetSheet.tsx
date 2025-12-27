@@ -105,14 +105,29 @@ function PlanetNodesPanel({
     placePointAtClient(ev.clientX, ev.clientY);
   };
 
-  // Android fix: React's touch handlers may be passive, causing taps to be ignored.
-  // We attach a non-passive native touchstart listener to reliably capture short taps.
+  // Android fix: React's touch handlers may be passive, causing short taps to be ignored.
+  // We attach ONE non-passive native touchstart listener for the lifetime of the component,
+  // and read the latest state through refs. This avoids a subtle issue on mobile where the
+  // listener is re-attached on each render (after adding a node), and the *first tap* after
+  // toggling edit mode can be missed, making it feel like a "double tap" is required.
+  const pointsRef = React.useRef(points);
+  const activeRef = React.useRef(active);
+  const editRef = React.useRef(editMode);
+
+  // Keep refs in sync *synchronously* on every render so the very first tap
+  // after enabling edit mode is not missed on Android.
+  pointsRef.current = points;
+  activeRef.current = active;
+  editRef.current = editMode;
+
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    if (!editMode) return;
 
     const handler = (e: TouchEvent) => {
+      // Only intercept gestures in edit mode.
+      if (!editRef.current) return;
+
       lastTouchRef.current = Date.now();
       // Non-passive listener => preventDefault actually works, so the browser won't swallow the tap.
       e.preventDefault();
@@ -120,44 +135,46 @@ function PlanetNodesPanel({
       const t = e.touches[0] ?? e.changedTouches[0];
       if (!t) return;
 
-      // In edit mode on mobile, allow deleting an existing node by tapping it.
-      // We do hit-testing in pixel space against the rendered image rect.
       const wrap = wrapRef.current;
       const imgRect = imgRef.current?.getBoundingClientRect();
       const rect = imgRect ?? wrap?.getBoundingClientRect();
-      if (rect) {
-        const nx = (t.clientX - rect.left) / rect.width;
-        const ny = (t.clientY - rect.top) / rect.height;
+      if (!rect) return;
 
-        // Find a node within a reasonable tap radius (in pixels).
-        const R = 22; // tap radius
-        let hit = -1;
-        for (let i = 0; i < points.length; i++) {
-          const px = points[i]?.x ?? 0;
-          const py = points[i]?.y ?? 0;
-          const dx = (px - nx) * rect.width;
-          const dy = (py - ny) * rect.height;
-          if (dx * dx + dy * dy <= R * R) {
-            hit = i;
-            break;
-          }
-        }
+      const nx = (t.clientX - rect.left) / rect.width;
+      const ny = (t.clientY - rect.top) / rect.height;
 
-        if (hit >= 0) {
-          const nextPoints = points.filter((_, i) => i !== hit);
-          const nextActive = active.filter((_, i) => i !== hit);
-          store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
-          return;
+      // Hit-test: if user taps on an existing node, delete it.
+      const currentPoints = pointsRef.current;
+      const currentActive = activeRef.current;
+      const R = 22; // tap radius in px
+      let hit = -1;
+      for (let i = 0; i < currentPoints.length; i++) {
+        const px = currentPoints[i]?.x ?? 0;
+        const py = currentPoints[i]?.y ?? 0;
+        const dx = (px - nx) * rect.width;
+        const dy = (py - ny) * rect.height;
+        if (dx * dx + dy * dy <= R * R) {
+          hit = i;
+          break;
         }
       }
 
-      // Otherwise create a new node at the tapped location.
+      if (hit >= 0) {
+        const nextPoints = currentPoints.filter((_, i) => i !== hit);
+        const nextActive = currentActive.filter((_, i) => i !== hit);
+        store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
+        return;
+      }
+
+      // Otherwise create a new node.
       placePointAtClient(t.clientX, t.clientY);
     };
 
     el.addEventListener('touchstart', handler, { passive: false });
     return () => el.removeEventListener('touchstart', handler as any);
-  }, [editMode, placePointAtClient, points, active, planetId, store]);
+    // Intentionally attach once; handler reads latest state through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, planetId]);
 
   const removePoint = (idx: number) => {
     const nextPoints = points.filter((_, i) => i !== idx);
