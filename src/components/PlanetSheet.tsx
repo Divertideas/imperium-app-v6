@@ -142,26 +142,49 @@ function PlanetNodesPanel({
   activeRef.current = active;
   editRef.current = editMode;
 
+  // Android quirk: a quick tap can be consumed as a scroll/focus gesture.
+  // The most reliable approach is to treat a TAP on *touchend* (after we know it wasn't a scroll)
+  // using a non-passive listener, while still preventing the browser from stealing the gesture.
+  // This fixes the "double tap required" issue seen on some Android phones/tablets.
+  const touchStartRef = React.useRef<{ x: number; y: number; t: number } | null>(null);
+
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
 
-    const handler = (e: TouchEvent) => {
-      // Only intercept gestures in edit mode.
-      if (!editRef.current) return;
-
-      lastTouchRef.current = Date.now();
-      // Non-passive listener => preventDefault actually works, so the browser won't swallow the tap.
-      e.preventDefault();
-
-      const t = e.touches[0] ?? e.changedTouches[0];
-      if (!t) return;
-
+    const getRect = () => {
       const wrap = wrapRef.current;
       const imgRect = imgRef.current?.getBoundingClientRect();
-      const rect = imgRect ?? wrap?.getBoundingClientRect();
-      if (!rect) return;
+      return imgRect ?? wrap?.getBoundingClientRect() ?? null;
+    };
 
+    const onTouchStart = (e: TouchEvent) => {
+      if (!editRef.current) return;
+      lastTouchRef.current = Date.now();
+      // Non-passive => preventDefault works. This stops the browser from converting the tap into a scroll.
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!editRef.current) return;
+      lastTouchRef.current = Date.now();
+      e.preventDefault();
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      const t = e.changedTouches[0];
+      if (!t || !start) return;
+
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      const moved = Math.sqrt(dx * dx + dy * dy);
+      // If finger moved, treat as scroll/gesture, not a tap.
+      if (moved > 10) return;
+
+      const rect = getRect();
+      if (!rect) return;
       const nx = (t.clientX - rect.left) / rect.width;
       const ny = (t.clientY - rect.top) / rect.height;
 
@@ -173,9 +196,9 @@ function PlanetNodesPanel({
       for (let i = 0; i < currentPoints.length; i++) {
         const px = currentPoints[i]?.x ?? 0;
         const py = currentPoints[i]?.y ?? 0;
-        const dx = (px - nx) * rect.width;
-        const dy = (py - ny) * rect.height;
-        if (dx * dx + dy * dy <= R * R) {
+        const hdx = (px - nx) * rect.width;
+        const hdy = (py - ny) * rect.height;
+        if (hdx * hdx + hdy * hdy <= R * R) {
           hit = i;
           break;
         }
@@ -192,9 +215,13 @@ function PlanetNodesPanel({
       placePointAtClient(t.clientX, t.clientY);
     };
 
-    // Use capture so we receive the tap before the browser starts interpreting it as a scroll gesture.
-    el.addEventListener('touchstart', handler, { passive: false, capture: true });
-    return () => el.removeEventListener('touchstart', handler as any, true);
+    // Capture so we receive the event before the browser begins interpreting it as a scroll.
+    el.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart as any, true);
+      el.removeEventListener('touchend', onTouchEnd as any, true);
+    };
     // Intentionally attach once; handler reads latest state through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, planetId]);
