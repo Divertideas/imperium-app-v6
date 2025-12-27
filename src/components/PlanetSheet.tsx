@@ -116,14 +116,48 @@ function PlanetNodesPanel({
       lastTouchRef.current = Date.now();
       // Non-passive listener => preventDefault actually works, so the browser won't swallow the tap.
       e.preventDefault();
+
       const t = e.touches[0] ?? e.changedTouches[0];
       if (!t) return;
+
+      // In edit mode on mobile, allow deleting an existing node by tapping it.
+      // We do hit-testing in pixel space against the rendered image rect.
+      const wrap = wrapRef.current;
+      const imgRect = imgRef.current?.getBoundingClientRect();
+      const rect = imgRect ?? wrap?.getBoundingClientRect();
+      if (rect) {
+        const nx = (t.clientX - rect.left) / rect.width;
+        const ny = (t.clientY - rect.top) / rect.height;
+
+        // Find a node within a reasonable tap radius (in pixels).
+        const R = 22; // tap radius
+        let hit = -1;
+        for (let i = 0; i < points.length; i++) {
+          const px = points[i]?.x ?? 0;
+          const py = points[i]?.y ?? 0;
+          const dx = (px - nx) * rect.width;
+          const dy = (py - ny) * rect.height;
+          if (dx * dx + dy * dy <= R * R) {
+            hit = i;
+            break;
+          }
+        }
+
+        if (hit >= 0) {
+          const nextPoints = points.filter((_, i) => i !== hit);
+          const nextActive = active.filter((_, i) => i !== hit);
+          store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
+          return;
+        }
+      }
+
+      // Otherwise create a new node at the tapped location.
       placePointAtClient(t.clientX, t.clientY);
     };
 
     el.addEventListener('touchstart', handler, { passive: false });
     return () => el.removeEventListener('touchstart', handler as any);
-  }, [editMode, placePointAtClient]);
+  }, [editMode, placePointAtClient, points, active, planetId, store]);
 
   const removePoint = (idx: number) => {
     const nextPoints = points.filter((_, i) => i !== idx);
