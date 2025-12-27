@@ -22,10 +22,14 @@ function PlanetNodesPanel({
   const [notice, setNotice] = useState<string>('');
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  // Android (mobile/tablet) can sometimes swallow a quick tap for pointer events
-  // on images while still delivering touch events. We handle BOTH and suppress
-  // duplicate placement when both fire.
-  const lastTouchRef = useRef<number>(0);
+  // Pointer-based tap detection (works across PC + Android).
+  // We intentionally avoid relying on click / double-tap delays.
+  const pointerRef = useRef<{ id: number | null; x: number; y: number; moved: boolean }>({
+    id: null,
+    x: 0,
+    y: 0,
+    moved: false,
+  });
 
   const src = planetNumber ? `/planet-nodes/${planetNumber}.png` : undefined;
 
@@ -70,9 +74,7 @@ function PlanetNodesPanel({
     store.savePlanet(planetId, { nodeActive: next });
   };
 
-  // --- Node placement handlers (Android + desktop)
-  // Root cause: on Android a quick tap may not dispatch pointerdown reliably over images,
-  // but touchstart is reliable. We support BOTH and dedupe.
+  // --- Node placement helpers
   const placePointAtClient = (clientX: number, clientY: number) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -95,21 +97,76 @@ function PlanetNodesPanel({
     store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
   };
 
-  const addPointFromPointer = (ev: React.PointerEvent<HTMLDivElement>) => {
+  // Hit-test and delete existing point in edit mode.
+  const hitTestPoint = (clientX: number, clientY: number): number => {
+    const wrap = wrapRef.current;
+    if (!wrap) return -1;
+    const imgRect = imgRef.current?.getBoundingClientRect();
+    const rect = imgRect ?? wrap.getBoundingClientRect();
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = (clientY - rect.top) / rect.height;
+    const R = 22; // px radius
+    for (let i = 0; i < points.length; i++) {
+      const px = points[i]?.x ?? 0;
+      const py = points[i]?.y ?? 0;
+      const dx = (px - nx) * rect.width;
+      const dy = (py - ny) * rect.height;
+      if (dx * dx + dy * dy <= R * R) return i;
+    }
+    return -1;
+  };
+
+  const removePointAtClient = (clientX: number, clientY: number) => {
+    const idx = hitTestPoint(clientX, clientY);
+    if (idx < 0) return false;
+    const nextPoints = points.filter((_, i) => i !== idx);
+    const nextActive = active.filter((_, i) => i !== idx);
+    store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
+    return true;
+  };
+
+  // Pointer-based tap: pointerdown -> pointerup with minimal movement.
+  const onPointerDown = (ev: React.PointerEvent<HTMLDivElement>) => {
     if (!editMode) return;
     const target = ev.target as HTMLElement | null;
     if (target && target.closest && target.closest('.node-dot')) return;
-    // If a touch event just fired, ignore the synthetic pointer event to avoid duplicates.
-    if (Date.now() - lastTouchRef.current < 600) return;
     ev.preventDefault();
-    placePointAtClient(ev.clientX, ev.clientY);
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    } catch {
+      // ignore
+    }
+    pointerRef.current = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, moved: false };
   };
 
-  // Android fix: React's touch handlers may be passive, causing short taps to be ignored.
-  // We attach ONE non-passive native touchstart listener for the lifetime of the component,
-  // and read the latest state through refs. This avoids a subtle issue on mobile where the
-  // listener is re-attached on each render (after adding a node), and the *first tap* after
-  // toggling edit mode can be missed, making it feel like a "double tap" is required.
+  const onPointerMove = (ev: React.PointerEvent<HTMLDivElement>) => {
+    if (!editMode) return;
+    if (pointerRef.current.id !== ev.pointerId) return;
+    const dx = ev.clientX - pointerRef.current.x;
+    const dy = ev.clientY - pointerRef.current.y;
+    // allow small jitter on mobile
+    if (dx * dx + dy * dy > 18 * 18) pointerRef.current.moved = true;
+  };
+
+  const onPointerUp = (ev: React.PointerEvent<HTMLDivElement>) => {
+    if (!editMode) return;
+    if (pointerRef.current.id !== ev.pointerId) return;
+    ev.preventDefault();
+    const moved = pointerRef.current.moved;
+    pointerRef.current.id = null;
+    if (moved) return;
+
+    // If tapped on an existing point, remove it; else place a new one.
+    if (!removePointAtClient(ev.clientX, ev.clientY)) {
+      placePointAtClient(ev.clientX, ev.clientY);
+    }
+  };
+
+  const onPointerCancel = () => {
+    pointerRef.current.id = null;
+  };
+
+  // Keep refs in sync for edit mode toggling.
   const pointsRef = React.useRef(points);
   const activeRef = React.useRef(active);
   const editRef = React.useRef(editMode);
@@ -142,104 +199,8 @@ function PlanetNodesPanel({
   activeRef.current = active;
   editRef.current = editMode;
 
-  // Android quirk: a quick tap can be consumed as a scroll/focus gesture.
-  // The most reliable approach is to treat a TAP on *touchend* (after we know it wasn't a scroll)
-  // using a non-passive listener, while still preventing the browser from stealing the gesture.
-  // This fixes the "double tap required" issue seen on some Android phones/tablets.
-  const touchStartRef = React.useRef<{ x: number; y: number; t: number } | null>(null);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-
-    const getRect = () => {
-      const wrap = wrapRef.current;
-      const imgRect = imgRef.current?.getBoundingClientRect();
-      return imgRect ?? wrap?.getBoundingClientRect() ?? null;
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (!editRef.current) return;
-      lastTouchRef.current = Date.now();
-      // Non-passive => preventDefault works. This stops the browser from converting the tap into a scroll.
-      e.preventDefault();
-      const t = e.touches[0];
-      if (!t) return;
-      touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!editRef.current) return;
-      lastTouchRef.current = Date.now();
-      e.preventDefault();
-      const start = touchStartRef.current;
-      touchStartRef.current = null;
-      const t = e.changedTouches[0];
-      if (!t || !start) return;
-
-      const dx = t.clientX - start.x;
-      const dy = t.clientY - start.y;
-      const moved = Math.sqrt(dx * dx + dy * dy);
-      // If finger moved, treat as scroll/gesture, not a tap.
-      // On Android, small jitter is common; too low a threshold makes
-      // single taps get ignored and users end up needing "double taps".
-      if (moved > 25) return;
-
-      const rect = getRect();
-      if (!rect) return;
-      const nx = (t.clientX - rect.left) / rect.width;
-      const ny = (t.clientY - rect.top) / rect.height;
-
-      // Hit-test: if user taps on an existing node, delete it.
-      const currentPoints = pointsRef.current;
-      const currentActive = activeRef.current;
-      const R = 22; // tap radius in px
-      let hit = -1;
-      for (let i = 0; i < currentPoints.length; i++) {
-        const px = currentPoints[i]?.x ?? 0;
-        const py = currentPoints[i]?.y ?? 0;
-        const hdx = (px - nx) * rect.width;
-        const hdy = (py - ny) * rect.height;
-        if (hdx * hdx + hdy * hdy <= R * R) {
-          hit = i;
-          break;
-        }
-      }
-
-      if (hit >= 0) {
-        const nextPoints = currentPoints.filter((_, i) => i !== hit);
-        const nextActive = currentActive.filter((_, i) => i !== hit);
-        store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
-        return;
-      }
-
-      // Otherwise create a new node.
-      placePointAtClient(t.clientX, t.clientY);
-    };
-
-    // Capture so we receive the event before the browser begins interpreting it as a scroll.
-    // Some Android Chrome/WebView builds start the gesture on the <img> and can fail to
-    // deliver the complete sequence to the wrapper. We attach to both wrapper and image.
-    const targets = [el, imgRef.current].filter(Boolean) as HTMLElement[];
-    for (const t of targets) {
-      t.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
-      t.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
-    }
-    return () => {
-      for (const t of targets) {
-        t.removeEventListener('touchstart', onTouchStart as any, true);
-        t.removeEventListener('touchend', onTouchEnd as any, true);
-      }
-    };
-    // Intentionally attach once; handler reads latest state through refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, planetId]);
-
-  const removePoint = (idx: number) => {
-    const nextPoints = points.filter((_, i) => i !== idx);
-    const nextActive = active.filter((_, i) => i !== idx);
-    store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
-  };
+  // Note: we intentionally do NOT attach native touch listeners anymore.
+  // Pointer Events + disabled zoom gestures (viewport) is the most reliable across Android/tablets.
 
   const resetPoints = () => {
     store.savePlanet(planetId, { nodePoints: [], nodeActive: [] });
@@ -267,7 +228,10 @@ function PlanetNodesPanel({
         <div
           className={`nodes-image-wrap ${editMode ? 'editing' : ''}`}
           ref={wrapRef}
-          onPointerDown={addPointFromPointer}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
           // Critical for Android: prevents double-tap-to-zoom and ensures a single tap
           // is delivered immediately to our handlers.
           style={{ touchAction: editMode ? 'none' : 'pan-y' }}
@@ -295,7 +259,11 @@ function PlanetNodesPanel({
               style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
               onClick={(e) => {
                 e.stopPropagation();
-                if (editMode) removePoint(i);
+                if (editMode) {
+                  const nextPoints = points.filter((_, idx) => idx !== i);
+                  const nextActive = active.filter((_, idx) => idx !== i);
+                  store.savePlanet(planetId, { nodePoints: nextPoints, nodeActive: nextActive });
+                }
                 else toggleActive(i);
               }}
               title={editMode ? 'Quitar nodo' : active[i] ? 'Desactivar nodo' : 'Activar nodo'}
