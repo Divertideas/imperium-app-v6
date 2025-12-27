@@ -218,11 +218,18 @@ function PlanetNodesPanel({
     };
 
     // Capture so we receive the event before the browser begins interpreting it as a scroll.
-    el.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
-    el.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+    // Some Android Chrome/WebView builds start the gesture on the <img> and can fail to
+    // deliver the complete sequence to the wrapper. We attach to both wrapper and image.
+    const targets = [el, imgRef.current].filter(Boolean) as HTMLElement[];
+    for (const t of targets) {
+      t.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
+      t.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+    }
     return () => {
-      el.removeEventListener('touchstart', onTouchStart as any, true);
-      el.removeEventListener('touchend', onTouchEnd as any, true);
+      for (const t of targets) {
+        t.removeEventListener('touchstart', onTouchStart as any, true);
+        t.removeEventListener('touchend', onTouchEnd as any, true);
+      }
     };
     // Intentionally attach once; handler reads latest state through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,6 +279,8 @@ function PlanetNodesPanel({
               src={src}
               alt={`Nodos planeta ${planetNumber}`}
               draggable={false}
+	              // Apply touch-action on the actual touch target to avoid Android's double-tap zoom delays.
+	              style={{ touchAction: editMode ? 'none' : 'pan-y' }}
               onError={() => setImgOk(false)}
             />
           ) : (
